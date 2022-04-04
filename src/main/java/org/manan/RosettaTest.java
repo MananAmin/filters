@@ -85,10 +85,9 @@ public class RosettaTest {
 			if(!flag)
 				cur++;
 		}
-		System.out.println("True ranges ratio : "+ trueRanges+" / "+ranges.length);
+//		System.out.println("True ranges ratio : "+ trueRanges+" / "+ranges.length);
 		return results;
 	}
-
 
 	private static void rangeQueryPerformance() {
 
@@ -107,7 +106,7 @@ public class RosettaTest {
 		for(Integer num:set)
 			rf.insert(num);
 
-		int[][] ranges = generateRanges(10000,100,10000,Min,Max);
+		int[][] ranges = generateRanges(10000,100,1000,Min,Max);
 
 		boolean[] results = findAnswers(set,ranges);
 
@@ -122,17 +121,84 @@ public class RosettaTest {
 		}
 		System.out.println("False Positive rate of range Queries :"+fp+" / "+falseQueries);
 
-
 	}
 
+	private static void rangeQueryPerformanceV2(int version,int elements,int R) {
+
+		List<Integer> array = new ArrayList<>();
+		int Min = 1000000000;
+		int Max = 2147483646;
+
+		for (int i = 0; i < elements; i++){
+			int random =Min + (int)(Math.random() * ((Max - Min) + 1));
+			array.add(random);
+		}
+		Set<Integer> set = new HashSet<Integer>(array);
+		RosettaFilter rf= new RosettaFilter(31,elements,R,version);
+
+		for(Integer num:set)
+			rf.insert2(num);
+
+		int[][] ranges = generateRanges(elements,2,R,Min,Max);
+
+		boolean[] results = findAnswers(set,ranges);
+
+		int fp=0;
+		int falseQueries =0;
+		for(int i=0;i<ranges.length;i++){
+			if(!results[i]) {
+				falseQueries++;
+				if (rf.range2(ranges[i][0], ranges[i][1]))
+					fp++;
+			}
+		}
+		System.out.println("False Positive rate of range Queries :"+fp+" / "+falseQueries);
+
+	}
+	private static void rangeQueryPerformanceV3(int elements,int R) {
+
+		List<Integer> array = new ArrayList<>();
+		int Min = 1000000000;
+		int Max = 2147483646;
+
+		for (int i = 0; i < elements; i++){
+			int random =Min + (int)(Math.random() * ((Max - Min) + 1));
+			array.add(random);
+		}
+		Set<Integer> set = new HashSet<Integer>(array);
+		RosettaFilter rf= new RosettaFilter(31,elements,512,3);
+
+		for(Integer num:set)
+			rf.insert2(num);
+
+		int[][] ranges = generateRanges(elements,2,R,Min,Max);
+
+		boolean[] results = findAnswers(set,ranges);
+
+		int fp=0;
+		int falseQueries =0;
+		for(int i=0;i<ranges.length;i++){
+			if(!results[i]) {
+				falseQueries++;
+				if (rf.range2(ranges[i][0], ranges[i][1]))
+					fp++;
+			}
+		}
+		System.out.println("False Positive rate of range Queries :"+fp+" / "+falseQueries);
+
+	}
 
 	public static void main(String[] args) {
-//		pointQueryPerformance();
-
-		rangeQueryPerformance();
-
-
-
+		System.out.println("Point Query");
+		pointQueryPerformance();
+		System.out.println();
+		System.out.println("Naive implementation");
+		rangeQueryPerformance();  //Naive implementation
+		System.out.println();
+		System.out.println("FPR Equilibrium Across Nodes.");
+		rangeQueryPerformanceV2(4,10000,64);  // FPR Equilibrium Across Nodes.
+		System.out.println();
+		System.out.println("Optimized Allocation of Memory Across Levels");
+		rangeQueryPerformanceV3(10000,64); // Optimized Allocation of Memory Across Levels
 	}
-
 }

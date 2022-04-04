@@ -37,6 +37,24 @@ public class BloomFilter {
 		this.bitsSize = bitsPerElements*elements;
 
 	}
+	public BloomFilter(int bitsSize, int hashFunctions) {
+		this.k = hashFunctions;
+		this.bits = new BitSet(bitsSize);
+		this.bitsSize = bitsSize;
+
+	}
+	public BloomFilter(double bitsPerElements, int elements, int hashFunctions) {
+		this.k = hashFunctions;
+		this.elements = elements;
+		this.bits = new BitSet((int)(bitsPerElements*elements));
+		this.bitsSize =(int)(bitsPerElements*elements);
+
+	}
+	public BloomFilter(double errorRate, int elements) {
+		this((Math.ceil(-(Math.log(errorRate) / Math.log(2))) / Math.log(2)), // c = k / ln(2)
+				elements,
+				(int)Math.ceil(-(Math.log(errorRate) / Math.log(2)))); // k = ceil(-log_2(false prob.))
+	}
 
 	// Ref: Less Hashing, Same Performance: Building a Better Bloom Filter
 	public int[] generateHash(String key,int k){
@@ -62,7 +80,6 @@ public class BloomFilter {
 		return Math.pow((1 - Math.exp(-k * (double) this.elements
 											  / (double) this.bitsSize)), k);
 	}
-
 
 	public void add(String input){
 		int[] hash = generateHash(input,this.k);
