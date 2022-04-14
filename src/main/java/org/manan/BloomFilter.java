@@ -21,6 +21,10 @@ public class BloomFilter {
 	static final Charset charset = StandardCharsets.UTF_8;
 	static MessageDigest digest;
 
+	public int getBitsSize() {
+		return bitsSize;
+	}
+
 	static{
 		try {
 			 digest = MessageDigest.getInstance("SHA-1");

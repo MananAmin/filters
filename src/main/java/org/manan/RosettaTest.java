@@ -1,5 +1,12 @@
 package org.manan;
 
+import org.knowm.xchart.BitmapEncoder;
+import org.knowm.xchart.XYChart;
+import org.knowm.xchart.XYChartBuilder;
+import org.knowm.xchart.XYSeries;
+import org.knowm.xchart.style.Styler;
+
+import java.io.IOException;
 import java.util.*;
 
 public class RosettaTest {
@@ -57,6 +64,21 @@ public class RosettaTest {
 		for(int i=0;i<num;i++){
 			int left = (int)(Math.random() * ((Max - Min) + 1));
 			int length = (int)(Math.random() * ((rangeLength - rangeMin) + 1));
+			int right = left+length;
+			ranges[i][0] = left;
+			ranges[i][1] = right;
+		}
+		return ranges;
+	}
+
+	public static int[][] generateFixedRanges(int num,int R,int minKey,int maxKey){
+		int Min = minKey;
+		int Max = maxKey-R;
+		int[][] ranges = new int[num][2];
+
+		for(int i=0;i<num;i++){
+			int left = (int)(Math.random() * ((Max - Min) + 1));
+			int length = R;
 			int right = left+length;
 			ranges[i][0] = left;
 			ranges[i][1] = right;
@@ -155,6 +177,77 @@ public class RosettaTest {
 		System.out.println("False Positive rate of range Queries :"+fp+" / "+falseQueries);
 
 	}
+
+	private static double rangeQueryPerformanceWithFixedRange(int version,int elements,int R) {
+
+		List<Integer> array = new ArrayList<>();
+		int Min = 1000000000;
+		int Max = 2147483646;
+
+		for (int i = 0; i < elements; i++){
+			int random =Min + (int)(Math.random() * ((Max - Min) + 1));
+			array.add(random);
+		}
+		Set<Integer> set = new HashSet<Integer>(array);
+		RosettaFilter rf= new RosettaFilter(31,elements,R,version);
+
+		for(Integer num:set)
+			rf.insert2(num);
+
+		int[][] ranges = generateFixedRanges(elements,R,Min,Max);
+
+		boolean[] results = findAnswers(set,ranges);
+
+		int fp=0;
+		int falseQueries =0;
+		for(int i=0;i<ranges.length;i++){
+			if(!results[i]) {
+				falseQueries++;
+				if (rf.range2(ranges[i][0], ranges[i][1]))
+					fp++;
+			}
+		}
+		double result = (double)fp/ (double) falseQueries;
+		return result;
+	}
+
+	private static double rangeQueryPerformanceWithFixedRangeEqualFPR(int version,int elements,int R,int depth) {
+
+		List<Integer> array = new ArrayList<>();
+		int Min = 1000000000;
+		int Max = 2147483646;
+
+		for (int i = 0; i < elements; i++){
+			int random =Min + (int)(Math.random() * ((Max - Min) + 1));
+			array.add(random);
+		}
+		Set<Integer> set = new HashSet<Integer>(array);
+		RosettaFilter rf= new RosettaFilter(31,elements,R,version,depth);
+
+		for(Integer num:set)
+			rf.insert2(num);
+
+		int[][] ranges = generateFixedRanges(elements,R,Min,Max);
+
+		boolean[] results = findAnswers(set,ranges);
+
+		int fp=0;
+		int falseQueries =0;
+		for(int i=0;i<ranges.length;i++){
+			if(!results[i]) {
+				falseQueries++;
+				if (rf.range2(ranges[i][0], ranges[i][1]))
+					fp++;
+			}
+		}
+//		System.out.println("False Positive rate of range Queries :"+fp+" / "+falseQueries);
+//		System.out.println("bits per elements are : "+rf.bitsperkey());
+
+		double result = (double)fp/ (double) falseQueries;
+		return result;
+	}
+
+
 	private static void rangeQueryPerformanceV3(int elements,int R) {
 
 		List<Integer> array = new ArrayList<>();
@@ -188,7 +281,7 @@ public class RosettaTest {
 
 	}
 
-	public static void main(String[] args) {
+	public static void performanceTest(String[] args) {
 		System.out.println("Point Query");
 		pointQueryPerformance();
 		System.out.println();
@@ -200,5 +293,103 @@ public class RosettaTest {
 		System.out.println();
 		System.out.println("Optimized Allocation of Memory Across Levels");
 		rangeQueryPerformanceV3(10000,64); // Optimized Allocation of Memory Across Levels
+	}
+
+	public static void generatev2RangeResult() throws IOException {
+		int [] rangeSizes = new int[] {2,4,8,16,32,64};
+		double[] rangeSizesChart = new double[]{2.0,4.0,8.0,16.0,32.0,64.0};
+		double[] results = new double[rangeSizes.length];
+		int i=0;
+		for(int range:rangeSizes){
+			results[i] = rangeQueryPerformanceWithFixedRange(2,100000,range);
+
+			i+=1;
+		}
+
+		final XYChart chart = new XYChartBuilder().width(800).height(600).title("Range size vs False Positive Rate").xAxisTitle("Range Size").yAxisTitle("False Positive Rate").build();
+
+		chart.getStyler().setLegendPosition(Styler.LegendPosition.InsideNE);
+		chart.getStyler().setDefaultSeriesRenderStyle(XYSeries.XYSeriesRenderStyle.Line);
+		chart.addSeries("Rosetta", rangeSizesChart,results);
+
+		BitmapEncoder.saveBitmap(chart, "images/rosetta-filter-range-vs-fpr-final", BitmapEncoder.BitmapFormat.PNG);
+
+	}
+
+	public static void generateEqualFPR() throws IOException {
+		int [] rangeSizes = new int[] {2,4,8,16,32,64};
+		double[] rangeSizesChart = new double[]{2.0,4.0,8.0,16.0,32.0,64.0};
+		double[] results = new double[rangeSizes.length];
+		double[] time = new double[rangeSizes.length];
+
+		int i=0;
+		//depth to control bits per key
+		int depth =21;
+
+
+		for(int range:rangeSizes){
+			long startTime = System.currentTimeMillis();
+			results[i] = rangeQueryPerformanceWithFixedRangeEqualFPR(4,100000,range,depth);
+			long stopTime = System.currentTimeMillis();
+			long elapsedTime = stopTime - startTime;
+			time[i] = (double) elapsedTime;
+			i+=1;
+		}
+
+		final XYChart chart = new XYChartBuilder().width(800).height(600).title("Range size vs False Positive Rate(A First-Cut Solution: FPR Equilibrium) (~22 bits per key)").xAxisTitle("Range Size").yAxisTitle("False Positive Rate").build();
+
+		chart.getStyler().setLegendPosition(Styler.LegendPosition.InsideNE);
+		chart.getStyler().setDefaultSeriesRenderStyle(XYSeries.XYSeriesRenderStyle.Line);
+		chart.addSeries("Rosetta", rangeSizesChart,results);
+
+		BitmapEncoder.saveBitmap(chart, "images/rosetta-filter-range-vs-fpr-equal-fpr", BitmapEncoder.BitmapFormat.PNG);
+
+		final XYChart chart2 = new XYChartBuilder().width(800).height(600).title("Range size vs Latency in milliseconds(A First-Cut Solution: FPR Equilibrium)").xAxisTitle("Range Size").yAxisTitle("All Query Execution Latency").build();
+
+		chart2.getStyler().setLegendPosition(Styler.LegendPosition.InsideNE);
+		chart2.getStyler().setDefaultSeriesRenderStyle(XYSeries.XYSeriesRenderStyle.Line);
+		chart2.addSeries("Rosetta", rangeSizesChart,time);
+
+		BitmapEncoder.saveBitmap(chart2, "images/rosetta-filter-range-vs-fpr-equal-fpr-time", BitmapEncoder.BitmapFormat.PNG);
+	}
+
+	public static void generateOptimizedMemory() throws IOException {
+		//Optimized Allocation of Memory Across Levels
+		int [] rangeSizes = new int[] {2,4,8,16,32,64};
+		double[] rangeSizesChart = new double[]{2.0,4.0,8.0,16.0,32.0,64.0};
+		double[] results = new double[rangeSizes.length];
+		double[] time = new double[rangeSizes.length];
+		int i=0;
+		for(int range:rangeSizes){
+			long startTime = System.currentTimeMillis();
+			results[i] = rangeQueryPerformanceWithFixedRange(3,100000,range);
+			long stopTime = System.currentTimeMillis();
+			long elapsedTime = stopTime - startTime;
+			time[i] = (double) elapsedTime;
+			i+=1;
+		}
+
+		final XYChart chart = new XYChartBuilder().width(800).height(600).title("Range size vs False Positive Rate(Optimized Allocation of Memory Across Levels)").xAxisTitle("Range Size").yAxisTitle("False Positive Rate").build();
+
+		chart.getStyler().setLegendPosition(Styler.LegendPosition.InsideNE);
+		chart.getStyler().setDefaultSeriesRenderStyle(XYSeries.XYSeriesRenderStyle.Line);
+		chart.addSeries("Rosetta", rangeSizesChart,results);
+
+		BitmapEncoder.saveBitmap(chart, "images/rosetta-filter-range-vs-fpr-equal-memory-fpr", BitmapEncoder.BitmapFormat.PNG);
+
+
+		final XYChart chart2 = new XYChartBuilder().width(800).height(600).title("Range size vs Latency in milliseconds(Optimized Allocation of Memory Across Levels)").xAxisTitle("Range Size").yAxisTitle("All Query Execution Latency").build();
+
+		chart2.getStyler().setLegendPosition(Styler.LegendPosition.InsideNE);
+		chart2.getStyler().setDefaultSeriesRenderStyle(XYSeries.XYSeriesRenderStyle.Line);
+		chart2.addSeries("Rosetta", rangeSizesChart,time);
+
+		BitmapEncoder.saveBitmap(chart2, "images/rosetta-filter-range-vs-fpr-equal-memory-fpr-time", BitmapEncoder.BitmapFormat.PNG);
+	}
+
+	public static void main(String[] args) throws IOException {
+			generatev2RangeResult();
+			generateEqualFPR();
+			generateOptimizedMemory();
 	}
 }

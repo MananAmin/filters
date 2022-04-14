@@ -10,8 +10,10 @@ public class RosettaFilter {
 	private int R;   //R Maximum range query size
 	private int keyLength;
 	private int depth;
+	private int elements;
 
 	public RosettaFilter(int keyLength, int elements, int R, int version) {
+		this.elements =elements;
 		this.keyLength = keyLength;
 		this.R = R;
 		bf = new BloomFilter[keyLength];
@@ -30,42 +32,33 @@ public class RosettaFilter {
 			}
 		} else if (version == 3) {
 			//  Optimized Allocation of Memory Across Levels.
-			this.depth = keyLength/2;
-			int M = 200000;
+			int M = elements*23;
 			int total = 0;
 			List<Integer> array = new ArrayList<Integer>();
 
-			for (int i = 0; i < keyLength; i++) {
-				if (i >= depth) {
+			for (int i = 0; i <= keyLength; i++) {
 					int r = keyLength - i - 1;
-
-					double c = c(r, R, M, elements);
-					double g = g(r, R);
-
+					double c = c(r,Math.max(6*R,R+keyLength), M, elements);
+					double g = g(r, Math.max(6*R,R+keyLength));
 					int bits = (int) (((-1) * elements / Math.pow(Math.log(2), 2.0)) * Math.log(c / g));
 					total += bits;
 					if(bits>0){
 						array.add(bits);
 					}
-				}
 			}
 			this.depth = keyLength-array.size();
 			int j =0;
 			for(int i :array){
-				if(j==0){
-					bf[keyLength-j-1] = new BloomFilter(100000,3);
-				}
-				else
-					bf[keyLength-j-1] = new BloomFilter(i,3);
-
+				bf[keyLength-j-1] = new BloomFilter(i,4);
 				j++;
 			}
-//			System.out.println("total : "+total);
+//			System.out.println("total : "+(double)total/elements);
 		}
 
 	 else if(version==4){
 		// FPR Equilibrium Across Nodes.
-		this.depth = (keyLength / 2);
+//		this.depth = (keyLength / 2);
+		this.depth = keyLength-log(keyLength,2)-6;
 		for (int i = 0; i < keyLength; i++) {
 			if (i >= depth) {
 				double fpr = 0.01;
@@ -80,6 +73,40 @@ public class RosettaFilter {
 
 }
 
+	public RosettaFilter(int keyLength, int elements, int R, int version,int depth) {
+		this.elements =elements;
+		this.depth = depth;
+		this.keyLength = keyLength;
+		this.R = R;
+		bf = new BloomFilter[keyLength];
+
+		if (version == 1) {
+			//vanilla version Naive Approach, not space efficient
+			for (int i = 0; i < keyLength; i++) {
+				bf[i] = new BloomFilter(10, elements, 3);
+			}
+		} else if (version == 2) {
+			// Removing half of top bloom filters
+			for (int i = 0; i < keyLength; i++) {
+				if (i >= depth)
+					bf[i] = new BloomFilter(10, elements, 3);
+			}
+		}
+		else if(version==4){
+			// FPR Equilibrium Across Nodes.
+			for (int i = 0; i < keyLength; i++) {
+				if (i >= depth) {
+					double fpr = 0.01;
+					double inner_fpr = 1 / (2 - fpr);
+					if (i == keyLength - 1)
+						bf[i] = new BloomFilter(fpr, elements);
+					else
+						bf[i] = new BloomFilter(inner_fpr, elements);
+				}
+			}
+		}
+
+	}
 
 	public static double g(int r,int R){
 		double result =0;
@@ -90,7 +117,7 @@ public class RosettaFilter {
 			else if(r+i< Math.floor(log2nlz(R+1)))
 				temp=1;
 			else
-				temp=(R - (1<<(r+i)) +1 )/(1<<(r+i));
+				temp=(double)(R - (1<<(r+i)) +1 )/(1<<(r+i));
 			result+=temp;
 		}
 		return result;
@@ -102,7 +129,7 @@ public class RosettaFilter {
 			first*=g(r,R);
 		}
 		double second = Math.pow(first,1/(Math.floor(log(R,2))));
-		double third = Math.pow(Math.E, ((-1)*(M)/ele)* (Math.pow(Math.log(2),2)/(Math.floor(log(R,2)))));
+		double third = Math.pow(Math.E, ((double) (-1)*(M)/ele)* (Math.pow(Math.log(2),2)/(Math.floor(log(R,2)))));
 		return second*third;
 	}
 
@@ -144,6 +171,18 @@ public class RosettaFilter {
 			value= value/2;  // as value is int => Math.floor(value/2)
 			cur-=1;
 		}
+	}
+
+	//approximated to near integer (floor)
+	public int bitsperkey(){
+		int bits = 0;
+		for (int i = 0; i < keyLength; i++) {
+
+			if (i >= depth) {
+				bits+=bf[i].getBitsSize();
+			}
+		}
+		return bits/this.elements;
 	}
 
 	public boolean pointQuery(int input){
